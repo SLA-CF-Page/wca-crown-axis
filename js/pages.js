@@ -414,10 +414,13 @@ function events() {
   const active = list.filter(i => i.active);
   const warns = active.filter(i => i.sev === 'warn');
   const total = list.reduce((n, i) => n + i.events.length, 0);
+  const recent = list.filter(i => !i.active && i.end > APP.t - 90 * 60000).slice(0, 3);
+  const shown = [...active, ...recent];
+  const archive = list.filter(i => !shown.includes(i)).slice(0, 10);
   const domains = { axis: T('世界之轴', 'World Axis'), crown: T('世界树之冠', 'World Tree Crown') };
   return head('事件与告警', 'Events & Alerts',
-    '按“事件包”组织的当值记录：每个事件包共享同一根因与处置链路，不会出现互相矛盾的告警。',
-    'Incident bundles: every bundle shares one root cause and one response chain, so alerts never contradict each other.') + `
+    '只显示进行中的事件包与最近 90 分钟已闭环的包；更早的进入归档。每个包共享同一根因与处置链路，不会互相矛盾。',
+    'Only active bundles and those closed in the last 90 minutes are shown; older ones move to the archive. Each bundle shares one root cause and one response chain.') + `
   <div class="grid g4">
     ${panel(T('进行中','Active'), `<div class="kpi am"><div class="k-label"><span>INCIDENTS</span><span>24H</span></div><div class="k-val">${active.length}</div><div class="k-foot"><span>${T('事件包','bundles')}</span><span>ACTIVE</span></div></div>`, '')}
     ${panel(T('告警级','Warnings'), `<div class="kpi"><div class="k-label"><span>WARNING</span><span>ACTIVE</span></div><div class="k-val" style="color:var(--amber)">${warns.length}</div><div class="k-foot"><span>${T('需处置','action')}</span><span>!</span></div></div>`, '')}
@@ -426,7 +429,7 @@ function events() {
   </div>
 
   <div class="grid" style="margin-top:14px">
-    ${list.map(i => `
+    ${shown.length ? shown.map(i => `
       <article class="incident ${i.active ? 'on' : ''}">
         <header class="inc-head">
           <span class="tag ${i.sev === 'warn' ? 'warn' : 'cy'}">${i.sev === 'warn' ? 'WARNING' : 'NORMAL'}</span>
@@ -442,7 +445,14 @@ function events() {
             <span class="s">${sevTxt(e.sev)}</span>
           </div>`).join('')}
         </div>
-      </article>`).join('')}
+      </article>`).join('') : `<div class="panel"><div class="panel-b" style="color:var(--dim);font-size:12px">${T('当前无进行中事件，最近 90 分钟也无闭环记录。','No active incidents and none closed in the last 90 minutes.')}</div></div>`}
+  </div>
+
+  <div style="margin-top:14px">
+    ${panel(T('近期归档','Recent archive'), `<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>ID</th><th>${T('事件包','Incident')}</th><th>${T('域','Domain')}</th><th>${T('开始','Start')}</th><th>${T('状态','State')}</th></tr></thead><tbody>
+      ${archive.map(i => `<tr><td class="num">${i.id}</td><td>${L(i.title.zh, i.title.en)}</td><td class="dim">${domains[i.domain]}</td><td class="num">${hhmm(i.start)}</td><td>${tag(T('已闭环','CLOSED'), 'ok')}</td></tr>`).join('')}
+    </tbody></table></div>`, 'ARCHIVE')}
   </div>`;
 }
 
