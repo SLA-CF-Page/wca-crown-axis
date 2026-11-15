@@ -186,36 +186,152 @@ export function nextDepartures(t, n = 8) {
   return out.sort((a, b) => a.dep - b.dep).slice(0, n);
 }
 
-/* ---------- 事件 ---------- */
-const EV = [
-  ['A级巡检完成', 'Level-A inspection completed', 'ok'],
-  ['中继节点 04 链路切换测试', 'Relay node 04 link switch test', 'ok'],
-  ['攀爬舱制动系统例行校验', 'Climber brake system check', 'ok'],
-  ['轨道碎片预警窗口', 'Orbital debris advisory window', 'warn'],
-  ['索系张力微幅波动', 'Minor tether tension fluctuation', 'warn'],
-  ['地面站电力负载调整', 'Ground station load adjustment', 'ok'],
-  ['货运舱温控偏差已修正', 'Freight pod thermal deviation corrected', 'ok'],
-  ['微陨石撞击传感器触发', 'Micrometeoroid sensor trigger', 'warn'],
-  ['EIOS 季度切换演练', 'EIOS quarterly switch drill', 'ok'],
-  ['客运班次因配载顺延', 'Passenger departure delayed for load balancing', 'warn']
+/* ---------- 事件（按“事件包”生成，同一包内因果自洽） ---------- */
+const INCIDENTS = [
+  {
+    domain: 'axis', sev: 'warn',
+    title: { zh: '轨道碎片接近', en: 'Orbital debris approach' },
+    events: [
+      { dt: 0, sev: 'warn', zh: '空间监视网发现碎片云 DEB-{n}，最近接近距离约 12 km', en: 'Space surveillance detected debris cloud DEB-{n}, closest approach ~12 km' },
+      { dt: 2, sev: 'info', zh: '上行速率降至 70%，暂停新发车', en: 'Upbound rate reduced to 70%; new departures held' },
+      { dt: 6, sev: 'info', zh: '在途货运舱降速至 400 km/h，保持安全间距', en: 'In-transit freight pods slowed to 400 km/h for separation' },
+      { dt: 14, sev: 'ok', zh: '碎片过境，最近距离 8.4 km，无碰撞', en: 'Debris passed at 8.4 km; no impact' },
+      { dt: 22, sev: 'ok', zh: '恢复 100% 运力，积压 3 舱开始疏解', en: 'Capacity restored to 100%; backlog of 3 pods clearing' }
+    ]
+  },
+  {
+    domain: 'axis', sev: 'warn',
+    title: { zh: '索系热异常', en: 'Tether thermal excursion' },
+    events: [
+      { dt: 0, sev: 'warn', zh: 'N05–N06 段索温较基线高 6.2°C，进入热观察', en: 'Tether N05–N06 +6.2°C above baseline; thermal watch' },
+      { dt: 3, sev: 'info', zh: '主动热控提升散热板流量至 82%', en: 'Active thermal control raised radiator flow to 82%' },
+      { dt: 11, sev: 'ok', zh: '索温回落至基线 +2.1°C', en: 'Tether temperature down to +2.1°C' },
+      { dt: 20, sev: 'ok', zh: '热观察解除，参数恢复正常', en: 'Thermal watch lifted; parameters normal' }
+    ]
+  },
+  {
+    domain: 'axis', sev: 'warn',
+    title: { zh: '货运舱热控', en: 'Freight pod thermal control' },
+    events: [
+      { dt: 0, sev: 'warn', zh: '货运舱 F-U-{n} 外层温度 78°C，超阈值 3°C', en: 'Freight pod F-U-{n} shell 78°C, 3°C above threshold' },
+      { dt: 2, sev: 'info', zh: '该舱降速 20% 并调整姿态角，增加迎风散热', en: 'Pod slowed 20% and attitude adjusted for radiative cooling' },
+      { dt: 8, sev: 'ok', zh: '舱体温度降至 71°C，回到阈值内', en: 'Pod temperature down to 71°C, within threshold' },
+      { dt: 14, sev: 'ok', zh: '恢复巡航速度，记录归档', en: 'Cruise speed restored; log archived' }
+    ]
+  },
+  {
+    domain: 'crown', sev: 'warn',
+    title: { zh: '传导功率波动', en: 'Power feed fluctuation' },
+    events: [
+      { dt: 0, sev: 'warn', zh: '世界之轴传导功率波动 ±18 MW，母线电压偏移', en: 'Axis power feed fluctuating ±18 MW; bus voltage offset' },
+      { dt: 1, sev: 'info', zh: '自载堆 R03 并网补偿，切换时间 42 s', en: 'Reactor R03 brought online for compensation in 42 s' },
+      { dt: 7, sev: 'ok', zh: '波动收敛至 ±3 MW', en: 'Fluctuation narrowed to ±3 MW' },
+      { dt: 13, sev: 'ok', zh: '恢复地面供电，R03 转备用', en: 'Ground feed restored; R03 back to standby' }
+    ]
+  },
+  {
+    domain: 'crown', sev: 'normal',
+    title: { zh: '微陨石撞击', en: 'Micrometeoroid impact' },
+    events: [
+      { dt: 0, sev: 'info', zh: '外环传感器记录微陨石撞击，能量约 0.4 J', en: 'Outer ring sensor logged a micrometeoroid impact, ~0.4 J' },
+      { dt: 2, sev: 'info', zh: '巡检机器人前往外环 03 区', en: 'Inspection robot dispatched to outer ring sector 03' },
+      { dt: 9, sev: 'ok', zh: '确认无穿透，仅表面凹坑 3 mm', en: 'No penetration; 3 mm surface pit only' },
+      { dt: 15, sev: 'ok', zh: '检查完成，事件归档', en: 'Inspection complete; event archived' }
+    ]
+  },
+  {
+    domain: 'crown', sev: 'warn',
+    title: { zh: '水循环回路压降', en: 'Water loop pressure drop' },
+    events: [
+      { dt: 0, sev: 'warn', zh: '水循环 02 回路压力下降 3%，切换备用', en: 'Water loop 02 pressure down 3%; switching to standby' },
+      { dt: 2, sev: 'info', zh: '备用回路接管，站内用水不受影响', en: 'Standby loop took over; station water supply unaffected' },
+      { dt: 7, sev: 'info', zh: '定位为密封圈微渗，准备更换', en: 'Traced to a seal micro-leak; replacement scheduled' },
+      { dt: 25, sev: 'ok', zh: '密封圈更换完成，主回路恢复', en: 'Seal replaced; primary loop restored' }
+    ]
+  },
+  {
+    domain: 'axis', sev: 'normal',
+    title: { zh: '备用链路衰减', en: 'Backup link degradation' },
+    events: [
+      { dt: 0, sev: 'info', zh: '激光备用链路信噪比下降 4 dB', en: 'Laser backup link SNR down 4 dB' },
+      { dt: 2, sev: 'info', zh: '切换至世界之轴光纤主链路', en: 'Switched to Axis fiber primary' },
+      { dt: 6, sev: 'ok', zh: '定位为地面站云层衰减，非设备故障', en: 'Cause: cloud attenuation at ground station, not equipment' },
+      { dt: 12, sev: 'ok', zh: '双链路恢复，主备正常', en: 'Both links restored' }
+    ]
+  },
+  {
+    domain: 'axis', sev: 'normal',
+    title: { zh: '节点计划维护', en: 'Scheduled node maintenance' },
+    events: [
+      { dt: 0, sev: 'info', zh: 'N03 进入计划维护窗口（B 级）', en: 'N03 entered scheduled maintenance window (Tier B)' },
+      { dt: 2, sev: 'info', zh: '巡检机器人上线，负载转移至 N02 / N04', en: 'Inspection robots online; load shifted to N02 / N04' },
+      { dt: 18, sev: 'ok', zh: '维护完成，N03 恢复承载', en: 'Maintenance complete; N03 back in service' }
+    ]
+  },
+  {
+    domain: 'axis', sev: 'normal',
+    title: { zh: '班次配载调整', en: 'Departure load balancing' },
+    events: [
+      { dt: 0, sev: 'info', zh: '客运班次 P-U-06 因配载顺延 12 分钟', en: 'Passenger service P-U-06 delayed 12 min for load balancing' },
+      { dt: 3, sev: 'info', zh: '货运 F-U-06 优先放行，占用上行窗口', en: 'Freight F-U-06 cleared first, using the upbound slot' },
+      { dt: 15, sev: 'ok', zh: 'P-U-06 发车，延误 12 分钟', en: 'P-U-06 departed with 12 min delay' }
+    ]
+  },
+  {
+    domain: 'crown', sev: 'warn',
+    title: { zh: '空间天气', en: 'Space weather' },
+    events: [
+      { dt: 0, sev: 'warn', zh: '太阳活动增强，GEO 粒子通量升至基线 3.2 倍', en: 'Solar activity rising; GEO particle flux 3.2× baseline' },
+      { dt: 4, sev: 'info', zh: '外层舱段辐射屏蔽提升，取消非必要出舱', en: 'Outer-ring shielding raised; non-essential EVA cancelled' },
+      { dt: 30, sev: 'ok', zh: '粒子通量回落至基线 1.4 倍', en: 'Particle flux down to 1.4× baseline' },
+      { dt: 36, sev: 'ok', zh: '解除辐射观察', en: 'Radiation watch lifted' }
+    ]
+  }
 ];
 
-export function events(t) {
-  const list = [];
-  for (const d0 of [dayStart(t) - DAY, dayStart(t)]) {
-    const r = rng(Math.floor(d0 / DAY) * 2654435761 % 4294967296);
-    const n = 6 + Math.floor(r() * 3);
-    for (let i = 0; i < n; i++) {
-      const e = EV[Math.floor(r() * EV.length)];
-      list.push({
-        t: d0 + Math.floor(r() * 24) * H + Math.floor(r() * 60) * 60000,
-        zh: e[0], en: e[1], sev: e[2],
-        id: `LOG-${String(i + 1).padStart(3, '0')}-${new Date(d0).getUTCDate()}`
-      });
-    }
-    list.push({ t: d0 + 6 * H, zh: '世界之轴 A 级巡检完成', en: 'World Axis level-A inspection completed', sev: 'ok', id: `LOG-000-${new Date(d0).getUTCDate()}` });
+const SLOT = 60 * 60000;
+const fill = (s, n) => s.replace(/\{n\}/g, String(n));
+
+function buildIncident(tpl, start, slot, now) {
+  const d = new Date(start);
+  const incId = `INC-${String(d.getUTCFullYear()).slice(2)}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${String(Math.abs(slot) % 1000).padStart(3, '0')}`;
+  const n = 101 + Math.floor(hash(slot * 17 + 9) * 899);
+  const all = tpl.events.map((e, i) => ({
+    t: start + e.dt * 60000,
+    zh: fill(e.zh, n), en: fill(e.en, n),
+    sev: e.sev,
+    id: `${incId}-${String(i + 1).padStart(2, '0')}`,
+    incId
+  }));
+  const shown = all.filter(e => e.t <= now);
+  if (!shown.length) return null;
+  const end = all[all.length - 1].t;
+  return {
+    id: incId, domain: tpl.domain, sev: tpl.sev, title: tpl.title,
+    start, end, active: now < end, events: shown
+  };
+}
+
+export function incidents(t) {
+  const slotNow = Math.floor(t / SLOT);
+  const out = [];
+  let lastIdx = -1;
+  for (let s = slotNow; s >= slotNow - 32; s--) {
+    const h = hash(((s * 2654435761) ^ 0x9e3779b9) >>> 0);
+    if (h > 0.42) continue;
+    let idx = Math.floor(hash(((s * 1103515245) ^ 0x5bd1e995) >>> 0) * INCIDENTS.length) % INCIDENTS.length;
+    if (idx === lastIdx) idx = (idx + 1) % INCIDENTS.length;
+    lastIdx = idx;
+    const start = s * SLOT + Math.floor(hash(s * 13 + 5) * SLOT * 0.55);
+    if (start > t || start < t - DAY) continue;
+    const inc = buildIncident(INCIDENTS[idx], start, s, t);
+    if (inc) out.push(inc);
   }
-  return list.filter(e => e.t <= t && e.t > t - DAY).sort((a, b) => b.t - a.t);
+  return out.sort((a, b) => b.start - a.start);
+}
+
+export function events(t) {
+  return incidents(t).flatMap(i => i.events).sort((a, b) => b.t - a.t);
 }
 
 /* ---------- 维护 ---------- */
@@ -290,5 +406,5 @@ export function nodes(t) {
 }
 
 export function snapshot(t) {
-  return { ...telemetry(t), transit: transit(t), nodes: nodes(t), next: nextDepartures(t), events: events(t), maint: maintenance(t), rings: rings(t) };
+  return { ...telemetry(t), transit: transit(t), nodes: nodes(t), next: nextDepartures(t), events: events(t), incidents: incidents(t), maint: maintenance(t), rings: rings(t) };
 }

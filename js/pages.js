@@ -22,6 +22,8 @@ const panel = (title, body, meta = '', raw = false) =>
   `<section class="panel"><div class="panel-h"><b>${title}</b>${meta ? (raw ? meta : `<span class="tag">${meta}</span>`) : ''}</div><div class="panel-b">${body}</div></section>`;
 const kv = (label, val, cls = '') => `<div class="stat-row"><span>${label}</span><b class="${cls}">${val}</b></div>`;
 const tag = (txt, c = '') => `<span class="tag ${c}">${txt}</span>`;
+const sevCls = (s) => s === 'crit' ? 'bad' : s === 'warn' ? 'warn' : s === 'info' ? 'idle' : 'ok';
+const sevTxt = (s) => s === 'crit' ? T('严重', 'CRITICAL') : s === 'warn' ? T('注意', 'ADVISORY') : s === 'info' ? T('信息', 'INFO') : T('正常', 'NOMINAL');
 export const cd = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
@@ -51,6 +53,14 @@ function overview() {
   return head('运行总览', 'Operations Overview',
     '世界之轴与世界树之冠的实时态势。数据由确定性模拟生成，同一时刻所有终端一致。',
     'Live status of the Axis and the Crown. Deterministic simulation, identical across all terminals.') + `
+  ${(() => {
+    const inc = d.incidents.find(i => i.active && i.sev === 'warn');
+    if (!inc) return '';
+    const mins = Math.max(0, Math.floor((APP.t - inc.start) / 60000));
+    return `<div class="alert-strip"><i class="led bad"></i><b>ACTIVE</b>
+      <span>${inc.id} · ${L(inc.title.zh, inc.title.en)}</span>
+      <span class="t">${T('已持续','elapsed')} ${mins} min</span></div>`;
+  })()}
   <div class="grid g4">
     ${panel(T('今日上行','Upbound today'), `<div class="kpi cy"><div class="k-label"><span>UP · TONNES</span><span>${T('上限','cap')} ${CANON.capUp}</span></div><div class="k-val">${K('upToday','t')}<small>t</small></div><div class="bar"><i data-w="upToday" data-max="${CANON.capUp}"></i></div></div>`, 'LIVE')}
     ${panel(T('今日下行','Downbound today'), `<div class="kpi am"><div class="k-label"><span>DOWN · TONNES</span><span>${T('上限','cap')} ${CANON.capDown}</span></div><div class="k-val">${K('downToday','t')}<small>t</small></div><div class="bar am"><i data-w="downToday" data-max="${CANON.capDown}"></i></div></div>`, 'LIVE')}
@@ -107,8 +117,8 @@ function overview() {
     ${panel(T('实时事件','Live events'), `<div class="feed">
       ${d.events.slice(0, 7).map(e => `<div class="feed-item">
         <span class="t">${hhmm(e.t)}</span>
-        <i class="led ${e.sev === 'warn' ? 'warn' : 'ok'} dot"></i>
-        <div>${L(e.zh, e.en)}<div class="m">${e.id} · ${e.sev === 'warn' ? T('注意','ADVISORY') : T('正常','NOMINAL')}</div></div>
+        <i class="led ${sevCls(e.sev)} dot"></i>
+        <div>${L(e.zh, e.en)}<div class="m">${e.id} · ${sevTxt(e.sev)}</div></div>
       </div>`).join('')}
     </div>`, 'LOG')}
   </div>`;
@@ -400,25 +410,40 @@ function maintenance() {
 /* ================= 事件 ================= */
 function events() {
   const d = APP.data;
-  const list = d.events;
-  const warn = list.filter(e => e.sev === 'warn').length;
+  const list = [...d.incidents].sort((a, b) => (b.active - a.active) || (b.start - a.start));
+  const active = list.filter(i => i.active);
+  const warns = active.filter(i => i.sev === 'warn');
+  const total = list.reduce((n, i) => n + i.events.length, 0);
+  const domains = { axis: T('世界之轴', 'World Axis'), crown: T('世界树之冠', 'World Tree Crown') };
   return head('事件与告警', 'Events & Alerts',
-    '当值事件流：巡检、切换测试、碎片预警与异常处置记录。',
-    'Duty event stream: inspections, switch tests, debris advisories and exceptions.') + `
+    '按“事件包”组织的当值记录：每个事件包共享同一根因与处置链路，不会出现互相矛盾的告警。',
+    'Incident bundles: every bundle shares one root cause and one response chain, so alerts never contradict each other.') + `
   <div class="grid g4">
-    ${panel(T('近 24 小时','Last 24 h'), `<div class="kpi"><div class="k-label"><span>LOG</span><span>24H</span></div><div class="k-val">${list.length}</div><div class="k-foot"><span>${T('全部','all')}</span><span>LOG</span></div></div>`, '')}
-    ${panel(T('注意级','Advisories'), `<div class="kpi am"><div class="k-label"><span>WARN</span><span>24H</span></div><div class="k-val">${warn}</div><div class="k-foot"><span>${T('待观察','watch')}</span><span>!</span></div></div>`, '')}
-    ${panel(T('正常级','Nominal'), `<div class="kpi cy"><div class="k-label"><span>OK</span><span>24H</span></div><div class="k-val">${list.length - warn}</div><div class="k-foot"><span>${T('已闭环','closed')}</span><span>✓</span></div></div>`, '')}
-    ${panel(T('最近事件','Latest'), `<div class="kpi bl"><div class="k-label"><span>LAST</span><span>UTC</span></div><div class="k-val">${list[0] ? hhmm(list[0].t) : '—'}</div><div class="k-foot"><span>${list[0] ? list[0].id : ''}</span><span>${list[0] ? (list[0].sev === 'warn' ? T('注意','WARN') : T('正常','OK')) : ''}</span></div></div>`, '')}
+    ${panel(T('进行中','Active'), `<div class="kpi am"><div class="k-label"><span>INCIDENTS</span><span>24H</span></div><div class="k-val">${active.length}</div><div class="k-foot"><span>${T('事件包','bundles')}</span><span>ACTIVE</span></div></div>`, '')}
+    ${panel(T('告警级','Warnings'), `<div class="kpi"><div class="k-label"><span>WARNING</span><span>ACTIVE</span></div><div class="k-val" style="color:var(--amber)">${warns.length}</div><div class="k-foot"><span>${T('需处置','action')}</span><span>!</span></div></div>`, '')}
+    ${panel(T('近 24 小时事件','Events · 24h'), `<div class="kpi cy"><div class="k-label"><span>ENTRIES</span><span>24H</span></div><div class="k-val">${total}</div><div class="k-foot"><span>${list.length} ${T('个事件包','bundles')}</span><span>LOG</span></div></div>`, '')}
+    ${panel(T('最近一条','Latest'), `<div class="kpi bl"><div class="k-label"><span>LAST</span><span>UTC</span></div><div class="k-val">${d.events[0] ? hhmm(d.events[0].t) : '—'}</div><div class="k-foot"><span>${d.events[0] ? d.events[0].incId : ''}</span><span>${d.events[0] ? sevTxt(d.events[0].sev) : ''}</span></div></div>`, '')}
   </div>
 
-  ${panel(T('事件流','Event stream'), `<div class="feed" style="max-height:520px">
-    ${list.map(e => `<div class="feed-item">
-      <span class="t">${hhmm(e.t)}</span>
-      <i class="led ${e.sev === 'warn' ? 'warn' : 'ok'} dot"></i>
-      <div>${L(e.zh, e.en)}<div class="m">${e.id} · ${e.sev === 'warn' ? T('注意','ADVISORY') : T('正常','NOMINAL')} · ${T('已记录','logged')}</div></div>
-    </div>`).join('')}
-  </div>`, 'STREAM')}`;
+  <div class="grid" style="margin-top:14px">
+    ${list.map(i => `
+      <article class="incident ${i.active ? 'on' : ''}">
+        <header class="inc-head">
+          <span class="tag ${i.sev === 'warn' ? 'warn' : 'cy'}">${i.sev === 'warn' ? 'WARNING' : 'NORMAL'}</span>
+          <b class="mono">${i.id}</b>
+          <span class="inc-title">${L(i.title.zh, i.title.en)}</span>
+          <span class="inc-meta">${domains[i.domain]} · ${hhmm(i.start)} · ${i.active ? T('进行中','ACTIVE') : T('已闭环','CLOSED')}</span>
+        </header>
+        <div class="inc-body">
+          ${i.events.map(e => `<div class="inc-ev">
+            <span class="t">${hhmm(e.t)}</span>
+            <i class="led ${sevCls(e.sev)}"></i>
+            <span class="x">${L(e.zh, e.en)}</span>
+            <span class="s">${sevTxt(e.sev)}</span>
+          </div>`).join('')}
+        </div>
+      </article>`).join('')}
+  </div>`;
 }
 
 /* ================= 关于 ================= */
